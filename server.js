@@ -156,6 +156,39 @@ const translateOllamaToOpenAI = (request) => {
 
 // Helper function to translate OpenAI to Ollama format for chat endpoint
 const translateOpenAIToOllamaChat = (response) => {
+  // If usage field is present, use it
+  if (response.usage) {
+    return {
+      model: response.model,
+      created_at: new Date(response.created * 1000).toISOString(),
+      message: {
+        role: response.choices[0].message.role,
+        content: response.choices[0].message.content
+      },
+      done: response.choices[0].finish_reason === 'stop',
+      prompt_eval_count: response.usage.prompt_tokens || 0,
+      eval_count: response.usage.completion_tokens || 0,
+      total_tokens: response.usage.total_tokens || 0
+    };
+  }
+
+  // Otherwise, use timings data
+  if (response.timings && response.timings.cache_n !== undefined) {
+    return {
+      model: response.model,
+      created_at: new Date(response.created * 1000).toISOString(),
+      message: {
+        role: response.choices[0].message.role,
+        content: response.choices[0].message.content
+      },
+      done: response.choices[0].finish_reason === 'stop',
+      prompt_eval_count: response.timings.cache_n,
+      eval_count: response.timings.predicted_n || 0,
+      total_tokens: response.timings.cache_n + (response.timings.predicted_n || 0)
+    };
+  }
+
+  // Fallback to 0 if no data available
   return {
     model: response.model,
     created_at: new Date(response.created * 1000).toISOString(),
@@ -164,26 +197,49 @@ const translateOpenAIToOllamaChat = (response) => {
       content: response.choices[0].message.content
     },
     done: response.choices[0].finish_reason === 'stop',
-    total_duration: 123456789,
-    load_duration: 12345678,
-    prompt_eval_count: response.usage?.prompt_tokens || 0,
-    eval_count: response.usage?.completion_tokens || 0,
-    eval_duration: 123456789
+    prompt_eval_count: 0,
+    eval_count: 0,
+    total_tokens: 0
   };
 };
 
 // Helper function to translate OpenAI to Ollama format for generate endpoint
 const translateOpenAIToOllamaGenerate = (response) => {
+  // If usage field is present, use it
+  if (response.usage) {
+    return {
+      model: response.model,
+      created_at: new Date(response.created * 1000).toISOString(),
+      response: response.choices[0].message.content,
+      done: response.choices[0].finish_reason === 'stop',
+      prompt_eval_count: response.usage.prompt_tokens || 0,
+      eval_count: response.usage.completion_tokens || 0,
+      total_tokens: response.usage.total_tokens || 0
+    };
+  }
+
+  // Otherwise, use timings data
+  if (response.timings && response.timings.cache_n !== undefined) {
+    return {
+      model: response.model,
+      created_at: new Date(response.created * 1000).toISOString(),
+      response: response.choices[0].message.content,
+      done: response.choices[0].finish_reason === 'stop',
+      prompt_eval_count: response.timings.cache_n,
+      eval_count: response.timings.predicted_n || 0,
+      total_tokens: response.timings.cache_n + (response.timings.predicted_n || 0)
+    };
+  }
+
+  // Fallback to 0 if no data available
   return {
     model: response.model,
     created_at: new Date(response.created * 1000).toISOString(),
     response: response.choices[0].message.content,
     done: response.choices[0].finish_reason === 'stop',
-    total_duration: 123456789,
-    load_duration: 12345678,
-    prompt_eval_count: response.usage?.prompt_tokens || 0,
-    eval_count: response.usage?.completion_tokens || 0,
-    eval_duration: 123456789
+    prompt_eval_count: 0,
+    eval_count: 0,
+    total_tokens: 0
   };
 };
 
@@ -200,12 +256,44 @@ const translateOpenAIStreamToOllamaChat = (response) => {
     message.tool_calls = delta.tool_calls;
   }
 
-  return {
+  const isDone = response.choices[0].finish_reason ? true : false;
+
+  // Base response object - use streaming format with message field
+  const ollamaResponse = {
     model: response.model,
     created_at: new Date().toISOString(),
-    message: message,
-    done: response.choices[0].finish_reason ? true : false
+    message: message, // Keep message field for streaming compatibility
+    done: isDone
   };
+
+  // Add token usage from OpenAI usage field (OpenAI-compatible format)
+  if (response.usage) {
+    ollamaResponse.prompt_eval_count = response.usage.prompt_tokens || 0;
+    ollamaResponse.eval_count = response.usage.completion_tokens || 0;
+    ollamaResponse.total_tokens = response.usage.total_tokens || 0;
+  } else if (response.timings && response.timings.cache_n !== undefined) {
+    // Add token usage from llama.cpp timing data as fallback
+    // cache_n = cached prompt tokens, predicted_n = predicted completion tokens
+    ollamaResponse.prompt_eval_count = response.timings.cache_n;
+    ollamaResponse.eval_count = response.timings.predicted_n || 0;
+    ollamaResponse.total_tokens = response.timings.cache_n + (response.timings.predicted_n || 0);
+  }
+
+  // Add standard Ollama fields for final response
+  if (isDone) {
+    ollamaResponse.done_reason = "stop";
+    ollamaResponse.context = []; // Empty context array as placeholder
+
+    // Use timing data if available
+    if (response.timings) {
+      ollamaResponse.total_duration = response.timings.total_duration || 0;
+      ollamaResponse.load_duration = response.timings.load_duration || 0;
+      ollamaResponse.prompt_eval_duration = response.timings.prompt_eval_duration || 0;
+      ollamaResponse.eval_duration = response.timings.eval_duration || 0;
+    }
+  }
+
+  return ollamaResponse;
 };
 
 // Generate endpoint (Ollama API)
@@ -214,15 +302,13 @@ app.post('/api/generate', async (req, res) => {
     const ollamaRequest = req.body;
     const openaiRequest = translateOllamaToOpenAI(ollamaRequest);
     const openaiResponse = await openaiClient.post('/v1/chat/completions', openaiRequest, {
-          timeout: 30000
-        });
+      timeout: 30000
+    });
 
     const ollamaResponse = translateOpenAIToOllamaGenerate(openaiResponse.data);
     res.json(ollamaResponse);
   } catch (error) {
-    console.error('Error in generate endpoint:', error);
     if (error.response) {
-      console.error('[DEBUG] OpenAI API error response:', error.response.status, JSON.stringify(error.response.data, null, 2));
       res.status(error.response.status).json({
         error: error.response.data
       });
@@ -326,17 +412,41 @@ app.post('/api/chat', async (req, res) => {
                     model: ollamaData.model,
                     created_at: ollamaData.created_at,
                     message: { role: 'assistant', content: '' },
-                    done: false
+                    done: false,
+                    prompt_eval_count: ollamaData.prompt_eval_count,
+                    eval_count: ollamaData.eval_count,
+                    total_tokens: ollamaData.total_tokens
                   };
                   res.write(JSON.stringify(firstChunkData) + '\n');
                   firstChunk = false;
                 }
-                if (ollamaData.message.content || ollamaData.message.tool_calls || ollamaData.done) {
+                if (ollamaData.message.content || ollamaData.message.tool_calls) {
                   const responseChunk = {
                     model: ollamaData.model,
                     created_at: ollamaData.created_at,
                     message: ollamaData.message,
-                    done: ollamaData.done
+                    done: false,
+                    prompt_eval_count: ollamaData.prompt_eval_count,
+                    eval_count: ollamaData.eval_count,
+                    total_tokens: ollamaData.total_tokens
+                  };
+                  res.write(JSON.stringify(responseChunk) + '\n');
+                }
+                if (ollamaData.done) {
+                  const responseChunk = {
+                    model: ollamaData.model,
+                    created_at: ollamaData.created_at,
+                    message: ollamaData.message,
+                    done: true,
+                    prompt_eval_count: ollamaData.prompt_eval_count,
+                    eval_count: ollamaData.eval_count,
+                    total_tokens: ollamaData.total_tokens,
+                    done_reason: ollamaData.done_reason,
+                    context: ollamaData.context,
+                    total_duration: ollamaData.total_duration,
+                    load_duration: ollamaData.load_duration,
+                    prompt_eval_duration: ollamaData.prompt_eval_duration,
+                    eval_duration: ollamaData.eval_duration
                   };
                   res.write(JSON.stringify(responseChunk) + '\n');
                 }
@@ -483,7 +593,6 @@ app.post('/api/chat', async (req, res) => {
       res.json(ollamaResponse);
     }
   } catch (error) {
-    console.error('Error in chat endpoint:', error);
     if (error.response) {
       res.status(error.response.status).json({
         error: error.response.data
