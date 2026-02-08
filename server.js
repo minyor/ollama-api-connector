@@ -46,7 +46,7 @@ const ollamaPort = argv.ollamaPort;
 const ollamaHost = argv.ollamaHost;
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
 
 // OpenAI API client
 const openaiClient = axios.create({
