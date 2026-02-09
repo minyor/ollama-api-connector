@@ -149,10 +149,10 @@ const translateOllamaToOpenAI = (request) => {
     tools: request.tools || undefined,
     tool_choice: request.options?.tool_choice || undefined,
     response_format: request.options?.response_format || undefined
-  };
+  }
 
   return openaiRequest;
-};
+}
 
 // Helper function to translate OpenAI to Ollama format for chat endpoint
 const translateOpenAIToOllamaChat = (response) => {
@@ -163,13 +163,9 @@ const translateOpenAIToOllamaChat = (response) => {
       created_at: new Date(response.created * 1000).toISOString(),
       message: {
         role: response.choices[0].message.role,
-        content: response.choices[0].message.content
-      },
-      done: response.choices[0].finish_reason === 'stop',
-      prompt_eval_count: response.usage.prompt_tokens || 0,
-      eval_count: response.usage.completion_tokens || 0,
-      total_tokens: response.usage.total_tokens || 0
-    };
+        content: response.choices[0].message.content || ''
+      }
+    }
   }
 
   // Otherwise, use timings data
@@ -185,7 +181,7 @@ const translateOpenAIToOllamaChat = (response) => {
       prompt_eval_count: response.timings.cache_n,
       eval_count: response.timings.predicted_n || 0,
       total_tokens: response.timings.cache_n + (response.timings.predicted_n || 0)
-    };
+    }
   }
 
   // Fallback to 0 if no data available
@@ -200,8 +196,8 @@ const translateOpenAIToOllamaChat = (response) => {
     prompt_eval_count: 0,
     eval_count: 0,
     total_tokens: 0
-  };
-};
+  }
+}
 
 // Helper function to translate OpenAI to Ollama format for generate endpoint
 const translateOpenAIToOllamaGenerate = (response) => {
@@ -215,7 +211,7 @@ const translateOpenAIToOllamaGenerate = (response) => {
       prompt_eval_count: response.usage.prompt_tokens || 0,
       eval_count: response.usage.completion_tokens || 0,
       total_tokens: response.usage.total_tokens || 0
-    };
+    }
   }
 
   // Otherwise, use timings data
@@ -228,7 +224,7 @@ const translateOpenAIToOllamaGenerate = (response) => {
       prompt_eval_count: response.timings.cache_n,
       eval_count: response.timings.predicted_n || 0,
       total_tokens: response.timings.cache_n + (response.timings.predicted_n || 0)
-    };
+    }
   }
 
   // Fallback to 0 if no data available
@@ -240,16 +236,16 @@ const translateOpenAIToOllamaGenerate = (response) => {
     prompt_eval_count: 0,
     eval_count: 0,
     total_tokens: 0
-  };
-};
+  }
+}
 
 // Helper function to translate OpenAI streaming response to Ollama format for chat endpoint
 const translateOpenAIStreamToOllamaChat = (response) => {
-  const delta = response.choices[0].delta || {};
+  const delta = response.choices[0].delta || {}
   const message = {
     role: delta.role || 'assistant',
     content: delta.content || ''
-  };
+  }
 
   // Include tool calls if present
   if (delta.tool_calls && delta.tool_calls.length > 0) {
@@ -264,7 +260,7 @@ const translateOpenAIStreamToOllamaChat = (response) => {
     created_at: new Date().toISOString(),
     message: message, // Keep message field for streaming compatibility
     done: isDone
-  };
+  }
 
   // Add token usage from OpenAI usage field (OpenAI-compatible format)
   if (response.usage) {
@@ -294,7 +290,7 @@ const translateOpenAIStreamToOllamaChat = (response) => {
   }
 
   return ollamaResponse;
-};
+}
 
 // Generate endpoint (Ollama API)
 app.post('/api/generate', async (req, res) => {
@@ -399,7 +395,7 @@ app.post('/api/chat', async (req, res) => {
               try {
                 const jsonData = JSON.parse(data);
                 if (jsonData.error) {
-                  const errorResponse = { error: jsonData.error };
+                  const errorResponse = { error: jsonData.error }
                   res.write(JSON.stringify(errorResponse) + '\n');
                   res.write('[DONE]\n');
                   res.end();
@@ -416,7 +412,7 @@ app.post('/api/chat', async (req, res) => {
                     prompt_eval_count: ollamaData.prompt_eval_count,
                     eval_count: ollamaData.eval_count,
                     total_tokens: ollamaData.total_tokens
-                  };
+                  }
                   res.write(JSON.stringify(firstChunkData) + '\n');
                   firstChunk = false;
                 }
@@ -429,7 +425,7 @@ app.post('/api/chat', async (req, res) => {
                     prompt_eval_count: ollamaData.prompt_eval_count,
                     eval_count: ollamaData.eval_count,
                     total_tokens: ollamaData.total_tokens
-                  };
+                  }
                   res.write(JSON.stringify(responseChunk) + '\n');
                 }
                 if (ollamaData.done) {
@@ -447,7 +443,7 @@ app.post('/api/chat', async (req, res) => {
                     load_duration: ollamaData.load_duration,
                     prompt_eval_duration: ollamaData.prompt_eval_duration,
                     eval_duration: ollamaData.eval_duration
-                  };
+                  }
                   res.write(JSON.stringify(responseChunk) + '\n');
                 }
                 if (ollamaData.done) {
@@ -457,7 +453,7 @@ app.post('/api/chat', async (req, res) => {
                   streamEnded = true;
                 }
               } catch (parseError) {
-                const errorResponse = { error: { message: 'Error parsing response', type: 'parse_error' } };
+                const errorResponse = { error: { message: 'Error parsing response', type: 'parse_error' } }
                 res.write(JSON.stringify(errorResponse) + '\n');
                 res.write('[DONE]\n');
                 res.end();
@@ -493,7 +489,7 @@ app.post('/api/chat', async (req, res) => {
                     if (jsonData.error) {
                       const errorResponse = {
                         error: jsonData.error
-                      };
+                      }
                       const errorJson = JSON.stringify(errorResponse);
                       res.write(errorJson + '\n');
                       res.write('[DONE]\n');
@@ -510,7 +506,7 @@ app.post('/api/chat', async (req, res) => {
                       created_at: ollamaData.created_at,
                       message: ollamaData.message,
                       done: ollamaData.done
-                    };
+                    }
                     const chunkJson = JSON.stringify(responseChunk);
                     res.write(chunkJson + '\n');
 
@@ -527,7 +523,7 @@ app.post('/api/chat', async (req, res) => {
                         message: 'Error parsing response',
                         type: 'parse_error'
                       }
-                    };
+                    }
                     const errorJson = JSON.stringify(errorResponse);
                     res.write(errorJson + '\n');
                     res.write('[DONE]\n');
@@ -566,7 +562,7 @@ app.post('/api/chat', async (req, res) => {
                 message: error.message || 'Stream error',
                 type: 'stream_error'
               }
-            };
+            }
             const errorJson = JSON.stringify(errorResponse);
             res.write(errorJson + '\n');
             res.write('[DONE]\n');
@@ -580,7 +576,7 @@ app.post('/api/chat', async (req, res) => {
             message: error.message || 'Internal server error',
             type: 'server_error'
           }
-        };
+        }
         res.write(`${JSON.stringify(errorResponse)}\n\n`);
         res.write('[DONE]\n\n');
         res.end();
