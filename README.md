@@ -1,4 +1,4 @@
-# Ollama-OpenAI-Compatibl API Proxy
+# Ollama-OpenAI-Compatible API Proxy
 
 A Node.js service that provides an Ollama-compatible API and translates requests to OpenAI-compatible API.
 
